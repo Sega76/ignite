@@ -36,10 +36,10 @@ class ControlUtility:
     BASE_COMMAND = "control.sh"
 
     # pylint: disable=R0913
-    def __init__(self, cluster, ssl_args: dict, creds_args: dict):
+    def __init__(self, cluster, ssl_args: dict = None, creds_args: dict = None):
         self._cluster = cluster
         self.logger = cluster.context.logger
-        self.ssl_context = self._parse_ssl_params("admin", cluster.context.globals, ssl_args)
+        self._set_ssl_if_need_with_globals(cluster.context.globals, "admin", ssl_args)
         self.creds_prover = self._parse_creds("admin", cluster.context.globals, creds_args)
 
     def jks_path(self, jks_name: str):
@@ -326,25 +326,18 @@ class ControlUtility:
         default_name = DEFAULT_TRUSTSTORE if store_type == 'trust_store' else DEFAULT_ADMIN_KEYSTORE
         return ssl_dict.get(path_key, self.jks_path(ssl_dict.get(store_name, default_name)))
 
-
-    def _get_ssl_if_exist_with_globals(self, globals: dict, dict_name: str, default_jks: str, **ssl_kwargs) -> SslContextFactory:
-        """
-        Update ssl configuration.
-        """
-
-        _dict = globals.get(dict_name).update(ssl_kwargs)
-
+    def _set_ssl_if_need_with_globals(self, globals: dict, user: str, ssl_kwargs: dict):
         root_dir = globals.get("install_root", "/opt")
 
-        if _dict and "ssl" in _dict:
-            ssl_context_factory = SslContextFactory(root_dir, **_dict['ssl'])
+        if globals.get('use_ssl'):
+            if globals[user] and globals[user]['ssl']:
+                ssl_context_factory = SslContextFactory(root_dir, **globals[user]['ssl'])
+            else:
+                ssl_context_factory = SslContextFactory(root_dir, DEFAULT_ADMIN_KEYSTORE)
         else:
-            ssl_context_factory = SslContextFactory(root_dir, default_jks)
+            ssl_context_factory = SslContextFactory(root_dir, **ssl_kwargs) if ssl_kwargs else None
 
-        return ssl_context_factory
-
-    # self.key_store_path = admin_dict.get("key_store_path",
-    #                                      self.jks_path(admin_dict.get('key_store_jks', DEFAULT_
+        self.ssl_context = ssl_context_factory
 
     @staticmethod
     def _parse_creds(user, globals_dict, **kwargs):
