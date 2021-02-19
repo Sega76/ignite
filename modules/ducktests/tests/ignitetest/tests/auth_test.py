@@ -18,6 +18,7 @@ This module contains password based authentication tests
 """
 
 from ignitetest.services.ignite import IgniteService
+from ignitetest.services.utils.auth.creds_provider import CredsProvider
 from ignitetest.services.utils.control_utility import ControlUtility, ControlUtilityError
 from ignitetest.services.utils.ignite_configuration import IgniteConfiguration, DataStorageConfiguration
 from ignitetest.services.utils.ignite_configuration.data_storage import DataRegionConfiguration
@@ -55,7 +56,7 @@ class AuthenticationTests(IgniteTest):
 
         servers.start()
 
-        control_utility = ControlUtility(cluster=servers, login="ignite", password="ignite")
+        control_utility = ControlUtility(cluster=servers, creds=CredsProvider())
         control_utility.activate()
 
     @cluster(num_nodes=NUM_NODES)
@@ -81,7 +82,8 @@ class AuthenticationTests(IgniteTest):
 
         servers.start()
 
-        control_utility = ControlUtility(cluster=servers, login="bad_person", password="wrong_password")
+        control_utility = ControlUtility(cluster=servers,
+                                         creds=CredsProvider(login="bad_person", password="wrong_password"))
 
         try:
             control_utility.activate()

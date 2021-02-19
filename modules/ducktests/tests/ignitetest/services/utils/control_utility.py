@@ -24,8 +24,8 @@ from typing import NamedTuple
 
 from ducktape.cluster.remoteaccount import RemoteCommandError
 
-from ignitetest.services.utils.auth.creds_provider import DEFAULT_AUTH_PASSWORD, DEFAULT_AUTH_LOGIN, CredsProvider
-from ignitetest.services.utils.ssl.ssl_factory import DEFAULT_PASSWORD, DEFAULT_TRUSTSTORE, DEFAULT_ADMIN_KEYSTORE
+from ignitetest.services.utils.auth.creds_provider import CredsProvider
+from ignitetest.services.utils.ssl.ssl_factory import DEFAULT_ADMIN_KEYSTORE
 from ignitetest.services.utils.ssl.ssl_factory import SslContextFactory
 
 
@@ -36,11 +36,11 @@ class ControlUtility:
     BASE_COMMAND = "control.sh"
 
     # pylint: disable=R0913
-    def __init__(self, cluster, ssl_args: dict = None, creds_args: dict = None):
+    def __init__(self, cluster, ssl_context: SslContextFactory = None, creds: CredsProvider = None):
         self._cluster = cluster
         self.logger = cluster.context.logger
-        self._set_ssl_if_need_with_globals(cluster.context.globals, "admin", ssl_args)
-        self.creds_prover = self._parse_creds("admin", cluster.context.globals, creds_args)
+        self.ssl_context = get_ssl_context_with_globals(cluster.context.globals, "admin", ssl_context)
+        self.creds = get_creds_provider_with_globals(cluster.context.globals, "admin", creds)
 
     def jks_path(self, jks_name: str):
         """
@@ -284,9 +284,9 @@ class ControlUtility:
                   f"--truststore {self.ssl_context.trust_store_path} " \
                   f"--truststore-password {self.ssl_context.trust_store_password}"
         auth = ""
-        if self.creds_prover:
-            auth = f" --user {self.creds_prover.login} " \
-                   f"--password {self.creds_prover.password} "
+        if self.creds:
+            auth = f" --user {self.creds.login} " \
+                   f"--password {self.creds.password} "
         return self._cluster.script(f"{self.BASE_COMMAND} --host "
                                     f"{node.account.externally_routable_ip} {cmd} {ssl} {auth}")
 
@@ -304,54 +304,6 @@ class ControlUtility:
 
     def __alives(self):
         return [node for node in self._cluster.nodes if self._cluster.alive(node)]
-
-    def _parse_ssl_params(self, user, globals_dict, **kwargs):
-        ssl_dict = None
-        if globals_dict.get('use_ssl'):
-            if user in globals_dict and 'ssl' in globals_dict[user]:
-                ssl_dict = globals_dict[user]['ssl']
-            else:
-                ssl_dict = {}
-        elif kwargs.get('key_store_jks') or kwargs.get('key_store_path'):
-            ssl_dict = kwargs
-        return None if ssl_dict is None else \
-            SslContextFactory(key_store_path=self.__get_store_path('key_store', ssl_dict),
-                              key_store_password=ssl_dict.get('key_store_password', DEFAULT_PASSWORD),
-                              trust_store_path=self.__get_store_path('trust_store', ssl_dict),
-                              trust_store_password=ssl_dict.get('trust_store_password', DEFAULT_PASSWORD))
-
-    def __get_store_path(self, store_type, ssl_dict):
-        path_key = f'{store_type}_path'
-        store_name = f'{store_type}_jks'
-        default_name = DEFAULT_TRUSTSTORE if store_type == 'trust_store' else DEFAULT_ADMIN_KEYSTORE
-        return ssl_dict.get(path_key, self.jks_path(ssl_dict.get(store_name, default_name)))
-
-    def _set_ssl_if_need_with_globals(self, globals: dict, user: str, ssl_kwargs: dict):
-        root_dir = globals.get("install_root", "/opt")
-
-        if globals.get('use_ssl'):
-            if globals[user] and globals[user]['ssl']:
-                ssl_context_factory = SslContextFactory(root_dir, **globals[user]['ssl'])
-            else:
-                ssl_context_factory = SslContextFactory(root_dir, DEFAULT_ADMIN_KEYSTORE)
-        else:
-            ssl_context_factory = SslContextFactory(root_dir, **ssl_kwargs) if ssl_kwargs else None
-
-        self.ssl_context = ssl_context_factory
-
-    @staticmethod
-    def _parse_creds(user, globals_dict, **kwargs):
-        creds_dict = None
-        if globals_dict.get('use_auth'):
-            if user in globals_dict and 'creds' in globals_dict[user]:
-                creds_dict = globals_dict[user]['creds']
-            else:
-                creds_dict = {}
-        elif kwargs.get('login'):
-            creds_dict = kwargs
-        return None if creds_dict is None else \
-            CredsProvider(login=creds_dict.get("login", DEFAULT_AUTH_LOGIN),
-                          password=creds_dict.get("password", DEFAULT_AUTH_PASSWORD))
 
 
 class BaselineNode(NamedTuple):
@@ -436,3 +388,41 @@ def parse_list(raw):
     Parse java List.toString() to python list
     """
     return [token.strip() for token in raw.split(',')]
+
+
+def get_creds_provider_with_globals(_globals: dict, user: str, creds_dflt: CredsProvider) -> CredsProvider:
+    """
+    :param _globals Globals
+    :param user User
+    :param creds_dflt Default CredsProvider
+    :return CredsProvider
+    """
+    if _globals.get('use_auth'):
+        if user in _globals and 'creds' in _globals[user]:
+            creds_provider = CredsProvider(**_globals[user]['creds'])
+        else:
+            creds_provider = creds_dflt if creds_dflt else CredsProvider()
+    else:
+        creds_provider = creds_dflt
+
+    return creds_provider
+
+
+def get_ssl_context_with_globals(_globals: dict, user: str, ssl_ctx_dflt: SslContextFactory) -> SslContextFactory:
+    """
+    :param _globals Globals
+    :param user User
+    :param ssl_ctx_dflt Default SslContextFactory
+    :return SslContextFactory
+    """
+    root_dir = _globals.get("install_root", "/opt")
+
+    if _globals.get('use_ssl'):
+        if user in _globals and 'ssl' in _globals[user]:
+            ssl_context_factory = SslContextFactory(root_dir, **_globals[user]['ssl'])
+        else:
+            ssl_context_factory = ssl_ctx_dflt if ssl_ctx_dflt else SslContextFactory(root_dir, DEFAULT_ADMIN_KEYSTORE)
+    else:
+        ssl_context_factory = ssl_ctx_dflt
+
+    return ssl_context_factory

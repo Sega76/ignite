@@ -26,6 +26,6 @@ class CredsProvider:
     Credentials provider.
     """
 
-    def __init__(self, login=None, password=None):
+    def __init__(self, login=DEFAULT_AUTH_LOGIN, password=DEFAULT_AUTH_PASSWORD):
         self.login = login
         self.password = password
