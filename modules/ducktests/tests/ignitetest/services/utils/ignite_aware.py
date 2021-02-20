@@ -22,7 +22,7 @@ import socket
 import sys
 import time
 from abc import abstractmethod, ABCMeta
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import IntEnum
 from threading import Thread
 
@@ -32,7 +32,7 @@ from ignitetest.services.utils.background_thread import BackgroundThreadService
 from ignitetest.services.utils.concurrent import CountDownLatch, AtomicValue
 from ignitetest.services.utils.path import IgnitePathAware
 from ignitetest.services.utils.ignite_spec import resolve_spec
-from ignitetest.services.utils.jmx_utils import ignite_jmx_mixin
+from ignitetest.services.utils.jmx_utils import ignite_jmx_mixin, JmxClient
 from ignitetest.services.utils.log_utils import monitor_log
 from ignitetest.utils.enum import constructible
 
@@ -459,3 +459,24 @@ class IgniteAwareService(BackgroundThreadService, IgnitePathAware, metaclass=ABC
 
             node.account.ssh(f'rm -rf {self.database_dir}', allow_fail=False)
             node.account.ssh(f'cp -r {snapshot_db} {self.work_dir}', allow_fail=False)
+
+    def await_rebalance(self, timeout_sec=180):
+        """
+        Waiting for the rebalance to complete.
+        :param timeout_sec: timeout to wait the rebalance to complete.
+        """
+        delta_time = datetime.now() + timedelta(seconds=timeout_sec)
+
+        while datetime.now() < delta_time:
+            for node in self.nodes:
+                mbean = JmxClient(node).find_mbean('.*name=cluster')
+                rebalanced = bool(next(mbean.Rebalanced))
+
+                self.logger.warn(f'Hostname={node.account.hostname}, '
+                                 f'Rebalanced={rebalanced}'
+                                 f'Rebalanced={next(mbean.Rebalanced)}')
+
+                if not rebalanced:
+                    return
+
+        raise TimeoutError(f'Rebalancing was not completed within the time: {timeout_sec} seconds.')

@@ -18,3 +18,6 @@ discovery:
 
 snapshot:
   - ../snapshot_test.py
+
+two_phased_rebalance:
+  - ../two_phased_rebalanced_test.py.py
