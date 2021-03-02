@@ -302,6 +302,9 @@ public class PerformanceStatisticsProcessor extends GridProcessorAdapter {
     public void rotateWriter() {
         try {
             synchronized (mux) {
+                if (writer == null)
+                    return;
+
                 FilePerformanceStatisticsWriter newWriter = new FilePerformanceStatisticsWriter(ctx);
 
                 newWriter.start();
@@ -310,8 +313,7 @@ public class PerformanceStatisticsProcessor extends GridProcessorAdapter {
 
                 writer = newWriter;
 
-                if (oldWriter != null)
-                    oldWriter.stop();
+                oldWriter.stop();
             }
             log.info("Performance statistics writer rotated.");
         }

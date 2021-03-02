@@ -20,16 +20,14 @@ package org.apache.ignite.internal.processors.performancestatistics;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
-import org.apache.ignite.internal.util.typedef.internal.U;
-import org.apache.ignite.lang.IgniteRunnable;
-import org.apache.ignite.lang.IgniteUuid;
+import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.testframework.ListeningTestLogger;
 import org.apache.ignite.testframework.LogListener;
 import org.junit.Test;
@@ -38,6 +36,7 @@ import org.junit.runners.Parameterized;
 
 import static org.apache.ignite.internal.processors.performancestatistics.AbstractPerformanceStatisticsTest.ClientType.CLIENT;
 import static org.apache.ignite.internal.processors.performancestatistics.AbstractPerformanceStatisticsTest.ClientType.SERVER;
+import static org.apache.ignite.testframework.GridTestUtils.assertThrows;
 import static org.apache.ignite.testframework.GridTestUtils.waitForCondition;
 
 /**
@@ -55,17 +54,11 @@ public class PerformanceStatisticsRotateFileTest extends AbstractPerformanceStat
     /** @return Test parameters. */
     @Parameterized.Parameters(name = "clientType={0}")
     public static Collection<?> parameters() {
-        return Arrays.asList(new Object[][] {{SERVER},
-//            {CLIENT}
-        }
-            );
+        return Arrays.asList(new Object[][] {{SERVER}, {CLIENT}});
     }
 
     /** Ignite. */
     private static IgniteEx srv;
-
-    /** Ignite node to run load from. */
-    private static IgniteEx node;
 
     /** Listener test logger. */
     private static final ListeningTestLogger listeningTestLog = new ListeningTestLogger();
@@ -84,116 +77,63 @@ public class PerformanceStatisticsRotateFileTest extends AbstractPerformanceStat
     @Override protected void beforeTestsStarted() throws Exception {
         srv = startGrid(NODES_CNT - 1);
 
-        IgniteEx client = startClientGrid(NODES_CNT);
-
-        node = clientType == SERVER ? srv : client;
+        startClientGrid(NODES_CNT);
     }
 
     /** @throws Exception If failed. */
     @Test
-    public void testRotateFile() throws Exception {
-        String testTaskName = "testTask";
-        int executions = 5;
-        long startTime = U.currentTimeMillis();
+    public void testRotateNewFile() throws Exception {
+        int cnt = 5;
+
+        assertThrows(null, AbstractPerformanceStatisticsTest::rotateCollectStatistics, IgniteException.class,
+            "Performance statistics collection not started.");
 
         startCollectStatistics();
 
-        IgniteRunnable task = new IgniteRunnable() {
-            @Override public void run() {
-                // No-op.
-            }
-        };
+        rotateCollectStatistics();
 
-        for (int i = 0; i < executions; i++)
-            node.compute().withName(testTaskName).run(task);
+        assertTrue(awaitRotateFile());
 
-        HashMap<IgniteUuid, Integer> sessions = new HashMap<>();
-        AtomicInteger tasks = new AtomicInteger();
-        AtomicInteger jobs = new AtomicInteger();
+        AtomicInteger ops = new AtomicInteger();
 
+        for (int i = 1; i <= cnt; i++) {
+            srv.cache(DEFAULT_CACHE_NAME).get(0);
+
+            rotateCollectStatistics();
+
+            assertTrue(awaitRotateFile());
+
+            TestHandler hnd = new TestHandler() {
+                @Override public void cacheOperation(UUID nodeId, OperationType type, int cacheId, long startTime,
+                    long duration) {
+                    ops.incrementAndGet();
+                }
+            };
+
+            String sfx = "-" + i + ".prf";
+
+            List<File> files = statisticsFiles().stream()
+                .filter(f -> f.getName().endsWith(sfx))
+                .collect(Collectors.toList());
+
+            readFiles(files, hnd);
+
+            assertEquals(NODES_CNT, files.size());
+
+            assertEquals(i, ops.get());
+        }
+
+        stopCollectStatistics();
+    }
+
+    /**
+     * Awaiting for the performance statistics file to rotated.
+     */
+    private boolean awaitRotateFile() throws IgniteInterruptedCheckedException {
         LogListener logLsnr = LogListener.matches("Performance statistics writer rotated.").build();
 
         listeningTestLog.registerListener(logLsnr);
 
-        rotateCollectStatistics();
-
-        assertTrue(waitForCondition(logLsnr::check, TIMEOUT));
-
-        List<File> files = statisticsFiles().stream()
-            .filter(f -> !f.getName().endsWith("-1.prf"))
-            .collect(Collectors.toList());
-
-        TestHandler hnd = new TestHandler() {
-            @Override public void task(UUID nodeId, IgniteUuid sesId, String taskName, long taskStartTime,
-                long duration, int affPartId) {
-                if (!(node.context().localNodeId().equals(nodeId) || testTaskName.equals(taskName)))
-                    return;
-
-                sessions.compute(sesId, (uuid, cnt) -> cnt == null ? 1 : ++cnt);
-
-                tasks.incrementAndGet();
-
-                UUID uuid = node.context().localNodeId();
-
-                assertEquals(uuid, nodeId);
-                assertEquals(testTaskName, taskName);
-                assertTrue(taskStartTime >= startTime);
-                assertTrue(duration >= 0);
-                assertEquals(-1, affPartId);
-            }
-
-            @Override public void job(UUID nodeId, IgniteUuid sesId, long queuedTime, long jobStartTime, long duration,
-                boolean timedOut) {
-                if (!srv.context().localNodeId().equals(nodeId))
-                    return;
-
-                sessions.compute(sesId, (uuid, cnt) -> cnt == null ? 1 : ++cnt);
-
-                jobs.incrementAndGet();
-
-                UUID uuid = srv.context().localNodeId();
-
-                assertEquals(uuid, nodeId);
-                assertTrue(queuedTime >= 0);
-                assertTrue(jobStartTime >= startTime);
-                assertTrue(duration >= 0);
-                assertFalse(timedOut);
-            }
-        };
-
-        readFiles(files, hnd);
-
-        check(executions, tasks.get(), jobs.get(), sessions.values());
-
-        tasks.set(0);
-        jobs.set(0);
-        sessions.clear();
-
-        for (int i = 0; i < executions; i++)
-            node.compute().withName(testTaskName).run(task);
-
-        stopCollectStatistics();
-
-        files = statisticsFiles().stream()
-            .filter(f -> f.getName().endsWith("-1.prf"))
-            .collect(Collectors.toList());
-
-        readFiles(files, hnd);
-
-        check(executions, tasks.get(), jobs.get() -1, sessions.values().stream().filter(v->v==2).collect(Collectors.toList()));
-    }
-
-    /**
-     * @param executions Executions.
-     * @param task Task.
-     * @param jobs Jobs.
-     * @param vals Vals.
-     */
-    private void check(int executions, int task, int jobs, Collection<Integer> vals) {
-        assertEquals(executions, task);
-        assertEquals(executions, jobs);
-
-        assertEquals(executions, vals.size());
-        assertTrue("Invalid sessions: ", vals.stream().allMatch(cnt -> cnt == NODES_CNT));
+        return waitForCondition(logLsnr::check, TIMEOUT);
     }
 }
