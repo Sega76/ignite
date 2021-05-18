@@ -35,6 +35,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BiConsumer;
 import org.apache.ignite.IgniteAuthenticationException;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
@@ -145,6 +146,9 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
     /** */
     private final Thread sesTimeoutCheckerThread;
 
+    /** Request / response listener. */
+    private final BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> lsnr;
+
     /** Protocol handler. */
     private final GridRestProtocolHandler protoHnd = new GridRestProtocolHandler() {
         @Override public GridRestResponse handle(GridRestRequest req) throws IgniteCheckedException {
@@ -152,7 +156,12 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
         }
 
         @Override public IgniteInternalFuture<GridRestResponse> handleAsync(GridRestRequest req) {
-            return handleAsync0(req);
+            IgniteInternalFuture<GridRestResponse> fut = handleAsync0(req);
+
+            if (lsnr != null)
+                fut.listen((f) -> lsnr.accept(req, f));
+
+            return fut;
         }
     };
 
@@ -499,6 +508,10 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
                     }
                 }
             });
+
+        this.lsnr = ctx.config().getConnectorConfiguration() != null
+            ? ctx.config().getConnectorConfiguration().getRestListener()
+            : null;
     }
 
     /** {@inheritDoc} */
