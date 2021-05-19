@@ -18,15 +18,10 @@
 package org.apache.ignite.configuration;
 
 import java.net.Socket;
-import java.util.function.BiConsumer;
 import javax.cache.configuration.Factory;
 import javax.net.ssl.SSLContext;
 import org.apache.ignite.IgniteSystemProperties;
-import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.client.ssl.GridSslContextFactory;
-import org.apache.ignite.internal.processors.rest.GridRestProcessor;
-import org.apache.ignite.internal.processors.rest.GridRestResponse;
-import org.apache.ignite.internal.processors.rest.request.GridRestRequest;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.ssl.SslContextFactory;
@@ -133,9 +128,6 @@ public class ConnectorConfiguration {
     /** Client message interceptor. */
     private ConnectorMessageInterceptor msgInterceptor;
 
-    /** REST request/response listener. */
-    private BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> restLsnr;
-
     /**
      * Creates client connection configuration with all default values.
      */
@@ -172,7 +164,6 @@ public class ConnectorConfiguration {
         sslFactory = cfg.getSslFactory();
         idleQryCurTimeout = cfg.getIdleQueryCursorTimeout();
         idleQryCurCheckFreq = cfg.getIdleQueryCursorCheckFrequency();
-        restLsnr = cfg.getRestListener();
     }
 
     /**
@@ -679,28 +670,6 @@ public class ConnectorConfiguration {
      */
     public long getIdleQueryCursorCheckFrequency() {
         return idleQryCurCheckFreq;
-    }
-
-    /**
-     * Sets REST request/response listener.
-     *
-     * @param restLsnr REST request/response listener.
-     * @see #getRestListener()
-     * @see GridRestProcessor Protocol handler.
-     * @return {@code this} for chaining.
-     */
-    public ConnectorConfiguration setRestListener(
-        BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> restLsnr) {
-        this.restLsnr = restLsnr;
-
-        return this;
-    }
-
-    /**
-     * @return REST request/response listener.
-     */
-    public BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> getRestListener() {
-        return restLsnr;
     }
 
     /** {@inheritDoc} */

@@ -37,8 +37,6 @@ import org.apache.ignite.internal.processors.rest.request.GridRestRequest;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
 
-import static org.apache.ignite.internal.processors.cache.CacheGetRemoveSkipStoreTest.TEST_CACHE;
-
 /**
  * Tests REST processor listener.
  */
@@ -48,12 +46,8 @@ public class RestProcessorListenersTest extends GridCommonAbstractTest {
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String instanceName) throws Exception {
-        ConnectorConfiguration connCfg = new ConnectorConfiguration();
-
-        connCfg.setRestListener(map::put);
-
         return super.getConfiguration(instanceName)
-            .setConnectorConfiguration(connCfg);
+            .setConnectorConfiguration(new ConnectorConfiguration());
     }
 
     /**
@@ -67,11 +61,12 @@ public class RestProcessorListenersTest extends GridCommonAbstractTest {
 
         assertEquals(ignite.context().rest().getClass(), GridRestProcessor.class);
 
-        assertNull(ignite.cache(TEST_CACHE));
+        GridRestProcessor rest = (GridRestProcessor)ignite.context().rest();
+        rest.listener(map::put);
 
         executeCommand(GridRestCommand.VERSION);
 
-        assertTrue(!map.isEmpty());
+        assertFalse(map.isEmpty());
 
         Map.Entry<GridRestRequest, IgniteInternalFuture<GridRestResponse>> entry =
             new ArrayList<>(map.entrySet()).get(0);

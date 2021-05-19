@@ -147,7 +147,7 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
     private final Thread sesTimeoutCheckerThread;
 
     /** Request / response listener. */
-    private final BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> lsnr;
+    private volatile BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> lsnr;
 
     /** Protocol handler. */
     private final GridRestProtocolHandler protoHnd = new GridRestProtocolHandler() {
@@ -508,10 +508,6 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
                     }
                 }
             });
-
-        this.lsnr = ctx.config().getConnectorConfiguration() != null
-            ? ctx.config().getConnectorConfiguration().getRestListener()
-            : null;
     }
 
     /** {@inheritDoc} */
@@ -1034,6 +1030,20 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
         X.println(">>> REST processor memory stats [igniteInstanceName=" + ctx.igniteInstanceName() + ']');
         X.println(">>>   protosSize: " + protos.size());
         X.println(">>>   handlersSize: " + handlers.size());
+    }
+
+    /**
+     * @return Request / response listener.
+     */
+    public BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> listener() {
+        return lsnr;
+    }
+
+    /**
+     * @param lsnr Request / response listener.
+     */
+    public void listener(BiConsumer<GridRestRequest, IgniteInternalFuture<GridRestResponse>> lsnr) {
+        this.lsnr = lsnr;
     }
 
     /**
