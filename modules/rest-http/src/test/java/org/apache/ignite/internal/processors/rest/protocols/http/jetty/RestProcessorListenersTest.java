@@ -21,9 +21,8 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.ConnectorConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -41,9 +40,6 @@ import org.junit.Test;
  * Tests REST processor listener.
  */
 public class RestProcessorListenersTest extends GridCommonAbstractTest {
-    /** */
-    private final Map<GridRestRequest, IgniteInternalFuture<GridRestResponse>> map = new HashMap<>();
-
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String instanceName) throws Exception {
         return super.getConfiguration(instanceName)
@@ -61,6 +57,8 @@ public class RestProcessorListenersTest extends GridCommonAbstractTest {
 
         assertEquals(ignite.context().rest().getClass(), GridRestProcessor.class);
 
+        Map<GridRestRequest, IgniteInternalFuture<GridRestResponse>> map = new ConcurrentHashMap<>();
+
         GridRestProcessor rest = (GridRestProcessor)ignite.context().rest();
         rest.listener(map::put);
 
@@ -68,8 +66,7 @@ public class RestProcessorListenersTest extends GridCommonAbstractTest {
 
         assertFalse(map.isEmpty());
 
-        Map.Entry<GridRestRequest, IgniteInternalFuture<GridRestResponse>> entry =
-            new ArrayList<>(map.entrySet()).get(0);
+        Map.Entry<GridRestRequest, IgniteInternalFuture<GridRestResponse>> entry = map.entrySet().iterator().next();
 
         assertEquals(GridRestCommand.VERSION, entry.getKey().command());
 

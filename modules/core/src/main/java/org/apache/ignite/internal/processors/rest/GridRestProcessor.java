@@ -159,7 +159,7 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
             IgniteInternalFuture<GridRestResponse> fut = handleAsync0(req);
 
             if (lsnr != null)
-                fut.listen((f) -> lsnr.accept(req, f));
+                fut.listen(f -> lsnr.accept(req, f));
 
             return fut;
         }
